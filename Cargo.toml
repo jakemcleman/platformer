@@ -1,0 +1,35 @@
+[package]
+name = "platformer_game"
+version = "0.0.1"
+publish = false
+authors = ["Jake McLeman"]
+edition = "2021"
+exclude = ["dist", "build", "assets", "credits"]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[dependencies]
+bevy = "0.11"
+bevy_asset_loader = { version = "0.17" }
+rand = { version = "0.8.3" }
+bevy_ecs_ldtk = "0.8.0"
+bevy_rapier2d = { version = "0.22" }
+
+# keep the following in sync with Bevy's dependencies
+winit = { version = "0.28", default-features = false }
+image = { version = "0.24", default-features = false }
+
+[build-dependencies]
+embed-resource = "1.4"
+
+[patch.crates-io]
+bevy_ecs_tilemap = { git = "http://github.com/StarArawn/bevy_ecs_tilemap", version = "0.11", branch = "main" }
+
