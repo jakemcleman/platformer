@@ -17,11 +17,16 @@ pub struct Actor {
     pub down_gravity: f32,
     pub jump_speed: f32,
     pub jump_time: f32,
+    pub can_jump: bool,
+}
+
+#[derive(Component, Clone)]
+pub struct ActorInputs {
     pub move_input: f32,
     pub jump_input: bool,
     pub grab_input: bool,
-    pub can_jump: bool,
 }
+
 
 #[derive(Component, Default, Clone)]
 pub struct Carrier {
@@ -186,10 +191,17 @@ impl Default for Actor {
             down_gravity: 500.,
             jump_speed: 800.,
             jump_time: 0.2,
+            can_jump: true,
+        }
+    }
+}
+
+impl Default for ActorInputs {
+    fn default() -> Self {
+        ActorInputs {
             move_input: 0.,
             jump_input: false,
             grab_input: false,
-            can_jump: false,
         }
     }
 }
@@ -288,15 +300,15 @@ pub fn actor_carry(
 }
 
 pub fn actor_carry_startstop(
-    mut carrier_query: Query<(Entity, &Actor, &GlobalTransform, &mut Carrier), Without<Carried>>,
-    mut carryable_query: Query<(&Carryable, Option<&Actor>, Option<&mut ActorStatus>, Option<&mut Carried>)>,
+    mut carrier_query: Query<(Entity, &ActorInputs, &GlobalTransform, &mut Carrier), Without<Carried>>,
+    mut carryable_query: Query<(&Carryable, Option<&Actor>, Option<&ActorInputs>, Option<&mut ActorStatus>, Option<&mut Carried>)>,
     rapier_context: Res<RapierContext>,
     mut start_carry_event_writer: EventWriter<StartCarryEvent>,
     mut end_carry_event_writer: EventWriter<EndCarryEvent>,
     mut commands: Commands,
 ) {
-    for (carrier_entity, actor, carrier_transform, mut carrier) in &mut carrier_query {
-        if actor.grab_input {
+    for (carrier_entity, actor_input, carrier_transform, mut carrier) in &mut carrier_query {
+        if actor_input.grab_input {
             //println!("grabby");
             
             if let Some(carried_entity) = carrier.carrying {
@@ -320,7 +332,7 @@ pub fn actor_carry_startstop(
                     if entity == carrier_entity {
                         return true;
                     }
-                    else if let Ok((_, _, _, carried)) = carryable_query.get_mut(entity) {
+                    else if let Ok((_, _, _, _, carried)) = carryable_query.get_mut(entity) {
                         if carried.is_none() {
                             start_carry_event_writer.send(StartCarryEvent{
                                 carrier: carrier_entity,
@@ -341,19 +353,21 @@ pub fn actor_carry_startstop(
         }
     }
     
-    for (_carryable, opt_actor, opt_actor_status, opt_carried) in &mut carryable_query {
+    for (_carryable, opt_actor, opt_actor_inputs, opt_actor_status, opt_carried) in &mut carryable_query {
         if let Some(carried) = opt_carried {
             if let Some(actor) = opt_actor {
-                if actor.jump_input {
-                    if let Ok((_, _, _, mut carrier)) = carrier_query.get_mut(carried.held_by) {
-                        commands.entity(carrier.carrying.unwrap()).remove::<Carried>();
-                        carrier.carrying = None;
-                    }
-                    
-                    if let Some(mut status) = opt_actor_status {
-                        status.velocity.y = actor.jump_speed;
-                        if status.grounded {
-                            status.event = Some(ActorEvent::Launched);
+                if let Some(actor_input) = opt_actor_inputs {
+                    if actor_input.jump_input {
+                        if let Ok((_, _, _, mut carrier)) = carrier_query.get_mut(carried.held_by) {
+                            commands.entity(carrier.carrying.unwrap()).remove::<Carried>();
+                            carrier.carrying = None;
+                        }
+                        
+                        if let Some(mut status) = opt_actor_status {
+                            status.velocity.y = actor.jump_speed;
+                            if status.grounded {
+                                status.event = Some(ActorEvent::Launched);
+                            }
                         }
                     }
                 }
@@ -364,13 +378,13 @@ pub fn actor_carry_startstop(
 
 pub fn actor_movement(
     time: Res<Time>,
-    mut actor_query: Query<(&Actor, &mut ActorStatus, &mut KinematicCharacterController, Option<&Carried>)>,
+    mut actor_query: Query<(&Actor, &ActorInputs, &mut ActorStatus, &mut KinematicCharacterController, Option<&Carried>)>,
 ) {
-    for (actor, mut status, mut controller, opt_carry) in &mut actor_query {
+    for (actor, actor_input, mut status, mut controller, opt_carry) in &mut actor_query {
         // Track facing based on input seperately
-        if actor.move_input > 0.1 {
+        if actor_input.move_input > 0.1 {
             status.facing_left = false;
-        } else if actor.move_input < -0.1 {
+        } else if actor_input.move_input < -0.1 {
             status.facing_left = true;
         }
         
@@ -384,11 +398,11 @@ pub fn actor_movement(
             
         }
         else {
-            let dir_match = actor.move_input.signum() == status.velocity.x.signum();
+            let dir_match = actor_input.move_input.signum() == status.velocity.x.signum();
             let accel = if dir_match { actor.accel } else { actor.deccel };
-            status.velocity.x += actor.move_input * accel * time.delta_seconds();
+            status.velocity.x += actor_input.move_input * accel * time.delta_seconds();
             
-            if actor.move_input.abs() < 0.1 {
+            if actor_input.move_input.abs() < 0.1 {
                 status.velocity.x *= 1.0 - actor.drag;
             }
     
@@ -400,7 +414,9 @@ pub fn actor_movement(
                 status.velocity.x = 0.;
             }
     
-            if actor.can_jump && actor.jump_input {
+            let state_can_jump = status.grounded || status.air_timer < actor.jump_time;
+
+            if actor.can_jump && state_can_jump && actor_input.jump_input {
                 status.velocity.y = actor.jump_speed;
     
                 if status.grounded {

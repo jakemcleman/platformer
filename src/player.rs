@@ -43,6 +43,7 @@ pub struct PlayerBundle {
     pub active_events: ActiveEvents,
     pub controller: KinematicCharacterController,
     pub actor: Actor,
+    pub actor_input: ActorInputs,
     pub actor_status: ActorStatus,
     pub actor_anim: ActorAnimationStates,
     pub actor_audio: ActorAudio,
@@ -120,6 +121,11 @@ impl LdtkEntity for PlayerBundle {
                         sprite_path = value.clone();
                     }
                 }
+                "CanJump" => {
+                    if let FieldValue::Bool(value) = &field.value {
+                        actor.can_jump = value.clone();
+                    }
+                }
                 unknown => println!("Unknown field \"{}\" on LDtk player object!", unknown),
             }
         }
@@ -151,6 +157,7 @@ impl LdtkEntity for PlayerBundle {
                 ..Default::default()
             },
             actor,
+            actor_input: ActorInputs::default(),
             actor_status: ActorStatus {
                 grounded: false,
                 facing_left: false,
@@ -205,15 +212,14 @@ impl LdtkEntity for PlayerBundle {
 
 fn player_inputs(
     actions: Res<Actions>,
-    mut player_query: Query<(&mut Actor, &ActorStatus, &Player)>,
+    mut player_query: Query<(&mut ActorInputs, &Player)>,
 ) {
     
-    for (mut actor, status, player) in &mut player_query {
+    for (mut actor_inputs, player) in &mut player_query {
         let input = Vec2::new(actions.player_movement[player.index].x, actions.player_movement[player.index].y);
-        actor.jump_input = actions.jump[player.index];
-        actor.grab_input = actions.action[player.index];
-        actor.can_jump = status.grounded || status.air_timer < actor.jump_time;
-        actor.move_input = input.x;
+        actor_inputs.jump_input = actions.jump[player.index];
+        actor_inputs.grab_input = actions.action[player.index];
+        actor_inputs.move_input = input.x;
     }
 }
 
